@@ -1,12 +1,8 @@
 from logging import info
 import requests
 import json
-from datetime import datetime
 import os
-import pandas as pd
-import pyrfc3339
 from dotenv import load_dotenv; load_dotenv()
-from config import USATimeZone
 
 authentication_header = {
     'APCA-API-KEY-ID': os.environ.get('APCA-API-KEY-ID'),
@@ -24,7 +20,7 @@ class Account:
         pass
     
     def _update(self) -> None:
-        info_dict = _getAccountInfo()
+        info_dict = self._getAccountInfo()
         self._info_dict = info_dict
         self._cash = float(info_dict['cash'])
         self._buying_power = float(info_dict['buying_power'])
@@ -42,6 +38,18 @@ class Account:
 
         assert self._short_market_value == 0
         assert self._pattern_day_trader == False
+    
+    def _getAccountInfo(self) -> dict:
+        '''
+        Get account informations
+        return dictionary
+        '''
+        base_url = os.environ.get('APCA_API_BASE_URL')
+        account_url = f'{base_url}/v2/account'
+        r = requests.get(account_url, headers=authentication_header)
+        r.raise_for_status()
+        account_info = json.loads(r.content)
+        return account_info
     
     @property
     def info_dict(self):
@@ -68,22 +76,12 @@ class Account:
         return str(self._info_dict)
 
 
-def _getAccountInfo() -> dict:
-    '''
-    Get account informations
-    return dictionary
-    '''
-    base_url = os.environ.get('APCA_API_BASE_URL')
-    account_url = f'{base_url}/v2/account'
-    r = requests.get(account_url, headers=authentication_header)
-    r.raise_for_status()
-    account_info = json.loads(r.content)
-    return account_info
+
 
 def main():
     # info = getAccountInfo()
     myAccount = Account()
-    print(myAccount.info_dict)
+    print(myAccount.buying_power)
     
 
 

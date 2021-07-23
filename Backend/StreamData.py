@@ -1,13 +1,8 @@
 from logging import log
 from typing import List
-import requests
 import json
-from datetime import datetime
 import os
-import pandas as pd
-import pyrfc3339
 from dotenv import load_dotenv; load_dotenv()
-from config import USATimeZone
 import websocket
 import ssl
 
@@ -16,46 +11,10 @@ authentication_header = {
     'APCA-API-SECRET-KEY': os.environ.get('APCA-API-SECRET-KEY')
 }
 
-class Resolution:
-    Min = '1Min'
-    Hour = '1Hour'
-    Day = '1Day'
-    
-def getHistoryBarsData(ticker, start, end, resolution):
-    '''
-    Get History bars data from [start] to [end]([end] include) with [resolution] resolution,
-
-    return pandas Dataframe with
-    column=['timestape', 'open', 'high', 'low', 'close', 'volume']
-    timestape is bar open timestape
-    '''
-    columns = ['timestape', 'open', 'high', 'low', 'close', 'volume']
-    base_url = os.environ.get('APCA_API_DATA_URL')
-    trade_url =  f'{base_url}/v2/stocks/{ticker}/bars'
-    payload = {
-        'start': pyrfc3339.generate(start),
-        'end': pyrfc3339.generate(end),
-        'timeframe': resolution,
-        'page_token': '',
-    }
-    bars = []
-    while(True):
-        r = requests.get(trade_url, headers=authentication_header, params=payload)
-        r.raise_for_status()
-        one_page_bars, _, next_page_token = r.json().values()
-        one_page_bars = [list(b.values()) for b in one_page_bars]
-        bars += one_page_bars
-        payload['page_token'] = next_page_token
-        if next_page_token is None:
-            break
-    
-    df = pd.DataFrame(data=bars, columns=columns)
-    df['timestape'] = df['timestape'].apply(lambda x: pyrfc3339.parse(x))
-    return df
-
 class StreamData:
     def __init__(self, log=False) -> None:
         self.log = log
+        self.subcribeCount = 0
         
 
     def SetLog(self, log: bool):
@@ -79,6 +38,7 @@ class StreamData:
         self.Log(auth_response)
     
     def SubcribeSymbols(self, tickers:List):
+        self.subcribeCount = len(tickers)
         tickers = str(tickers).replace('\'', '\"')
         subscribe_str = f'{{"action":"subscribe","bars":{tickers}}}'
         self.ws.send(subscribe_str)
@@ -87,18 +47,32 @@ class StreamData:
 
     def ListenData(self, OnData):
         while(True):
-            bar_data = self.ws.recv()
+            print('waiting data...')
+            #since alpaca stream one symbol at a time, I concate all data in a time slice to one bar_data
+            bar_data = []
+            for _ in range(self.subcribeCount):
+                b = json.loads(self.ws.recv())
+                bar_data += b
             self.Log(bar_data)
+            bar_data = self._process_alpaca_steam_data(bar_data)
             #call back function
             OnData(bar_data)
     
+    def _process_alpaca_steam_data(self, bar_data):
+        out_dict = dict()
+        for b in bar_data:
+            b['symbol'] = b.pop('S')
+            b['open'] = b.pop('o')
+            b['high'] = b.pop('h')
+            b['low'] = b.pop('l')
+            b['close'] = b.pop('c')
+            b['volume'] = b.pop('v')
+            b['timestamp'] = b.pop('t')
+            out_dict[b['symbol']] = b
+        return out_dict
+    
 
 def main():
-
-    # start = datetime(2021, 7, 15 ,10 ,20 , tzinfo=USATimeZone)
-    # end = datetime(2021, 7, 15, 10, 25, tzinfo=USATimeZone)
-    # df = getHistoryBarsData('AAPL', start, end, Resolution.Min)
-    # print(df)
 
     tickers = ['GOOGL', 'TSLA', 'SPY']
     # SubscribeMinBarsData(tickers)

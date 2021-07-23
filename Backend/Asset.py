@@ -1,14 +1,9 @@
 from typing import List
 import requests
 import json
-from datetime import datetime
 import os
-import pandas as pd
-import pyrfc3339
 from dotenv import load_dotenv; load_dotenv()
 from config import USATimeZone
-
-from account import getAccountInfo
 
 authentication_header = {
     'APCA-API-KEY-ID': os.environ.get('APCA-API-KEY-ID'),
