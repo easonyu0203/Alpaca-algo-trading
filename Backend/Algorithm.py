@@ -1,5 +1,4 @@
-from logging import log
-from typing import List, Tuple
+import threading
 
 from .StreamData import StreamData
 from .Account import Account
@@ -7,6 +6,8 @@ from .Order import Order
 from .Portfolio import Portfolio, PortfolioTarget
 from .Setting import Setting
 from .Position import Position
+from .Event import EventListener
+from .MarketStatus import MarketStatus
 
 class Algorithm:
     def __init__(self, log=False) -> None:
@@ -15,6 +16,8 @@ class Algorithm:
         self.Account = Account()
         self.Setting = Setting()
         self.Portfolio = Portfolio(self.Account)
+        self.dataIn_eventListener = EventListener(self.OnData)
+        self.dataIn_eventListener.Subcribe(self.Stream_data.dataIn_event)
         self._log = log
     
     def Log(self, _str):
@@ -33,11 +36,6 @@ class Algorithm:
             self.SetHolding('TSLA', 1)
         else:
             self.Liquidate('TSLA')
-
-    def _startLive(self):
-        self.Stream_data.ConnectStreaming()
-        self.Stream_data.SubcribeSymbols(list(self.subscribe_symbol_set))
-        self.Stream_data.ListenData(OnData=self.OnData)
 
     def AddEquity(self, symbol):
         '''
@@ -73,6 +71,26 @@ class Algorithm:
 
         dollar_amount = self.Account.buying_power * self.Setting.with_cash_buffer * percentage
         self.SimpleOrder(symbol, dollar_amount)
+
+    def _check_for_listening_stream_data(self):
+        '''
+        check market status and decide whether connect to streaming data or not
+        '''
+        if MarketStatus.CurrentMarketStatus() == MarketStatus.Close and self.Stream_data.is_listening == True:
+            self.Log('Ending connection with Alpaca streaming data')
+            self.Stream_data.End_listen_stream_data()
+        elif MarketStatus.CurrentMarketStatus() == MarketStatus.OpenSoon and self.Stream_data.is_listening == False:
+            self.Log('Start conection with Alpaca streaming data')
+            self.Stream_data.Start_listen_stream_data(self.subscribe_symbol_set)
+        elif MarketStatus.CurrentMarketStatus() == MarketStatus.Open and self.Stream_data.is_listening == False:
+            self.Log('Start conection with Alpaca streaming data')
+            self.Stream_data.Start_listen_stream_data(self.subscribe_symbol_set)
+        elif MarketStatus.CurrentMarketStatus() == MarketStatus.CloseSoon and self.Stream_data.is_listening == True:
+            self.Log('Ending connection with Alpaca streaming data')
+            self.Stream_data.End_listen_stream_data()
+        else:
+            self.Log('stay current connection/unconnection')
+
 
 
 

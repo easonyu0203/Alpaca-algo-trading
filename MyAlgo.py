@@ -12,6 +12,6 @@ class MyAlogo(Algorithm):
         print('Ondata..')
         if not self.Portfolio.have_invested:
             print('no portfolio')
-            self.SetHolding('TSLA', 1)
+            self.SetHolding('SPY', 1)
         else:
-            self.Liquidate('TSLA')
+            self.Liquidate('SPY')

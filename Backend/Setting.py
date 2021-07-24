@@ -4,6 +4,7 @@ class Setting:
     def __init__(self) -> None:
         
         self._cash_buffer = 2.5 # in percentage
+        
     
     @property
     def with_cash_buffer(self):

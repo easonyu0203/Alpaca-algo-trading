@@ -1,10 +1,14 @@
-from logging import log
+from enum import Flag
+from dotenv import load_dotenv; load_dotenv()
 from typing import List
 import json
 import os
-from dotenv import load_dotenv; load_dotenv()
 import websocket
 import ssl
+from queue import SimpleQueue
+import threading
+
+from .Event import Event, EventListener, EventType
 
 authentication_header = {
     'APCA-API-KEY-ID': os.environ.get('APCA-API-KEY-ID'),
@@ -15,6 +19,15 @@ class StreamData:
     def __init__(self, log=False) -> None:
         self.log = log
         self.subcribeCount = 0
+        self._buffer = SimpleQueue()
+        self.dataIn_event = Event(EventType.DataIn)
+        self.is_listening = False
+        self.listen_data_thread = None
+
+    def Update(self):
+        if not self._buffer.empty() and self.is_listening == True:
+            data = self._buffer.get()
+            self.dataIn_event.Emit(data)
         
 
     def SetLog(self, log: bool):
@@ -23,6 +36,22 @@ class StreamData:
     def Log(self, _str: str):
         if self.log == True:
             print(_str)
+
+    def Start_listen_stream_data(self, subscribe_symbol_set):
+        '''
+        start listening streaming data from another thread
+        '''
+        self._clear_buffer()
+        self.is_listening = True
+
+        if self.listen_data_thread is None or self.listen_data_thread.is_alive() == False:
+            self.ConnectStreaming()
+            self.SubcribeSymbols(list(subscribe_symbol_set))
+            self.listen_data_thread = threading.Thread(target=self.ListenData)
+            self.listen_data_thread.start()
+    
+    def End_listen_stream_data(self):
+        self.is_listening = False
 
     def ConnectStreaming(self):
         source = 'iex'
@@ -45,9 +74,8 @@ class StreamData:
         subscribe_response = self.ws.recv()
         self.Log(subscribe_response)
 
-    def ListenData(self, OnData):
-        while(True):
-            print('waiting data...')
+    def ListenData(self):
+        while(self.is_listening):
             #since alpaca stream one symbol at a time, I concate all data in a time slice to one bar_data
             bar_data = []
             for _ in range(self.subcribeCount):
@@ -55,9 +83,16 @@ class StreamData:
                 bar_data += b
             self.Log(bar_data)
             bar_data = self._process_alpaca_steam_data(bar_data)
-            #call back function
-            OnData(bar_data)
+            self._buffer.put(bar_data)
+            
+        self._clear_buffer()
     
+
+    def _clear_buffer(self):
+        #clear buffer
+        while self._buffer.empty() is not True:
+            self._buffer.get()
+
     def _process_alpaca_steam_data(self, bar_data):
         out_dict = dict()
         for b in bar_data:
