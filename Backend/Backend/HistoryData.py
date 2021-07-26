@@ -33,6 +33,7 @@ class Resolution:
 def getHistoryBarsData(symbol, bar_count, resolution):
     '''
     get history bar data of symbol for lastest 'bar_count' bars for this resolution
+    return dataframe with index by timestape and colume of ['open', 'high', 'low', 'close', 'volume']
     '''
     start, end = _get_start_end_time(bar_count, resolution)
     columns = ['timestape', 'open', 'high', 'low', 'close', 'volume']
@@ -57,23 +58,37 @@ def getHistoryBarsData(symbol, bar_count, resolution):
     
     df = pd.DataFrame(data=bars, columns=columns)
     df['timestape'] = df['timestape'].apply(lambda x: pyrfc3339.parse(x))
+    df.set_index('timestape', inplace=True)
+    assert df.shape[0] >= bar_count
     return df.iloc[-bar_count:]
 
 def _get_start_end_time(bar_count, resolution):
     now = datetime.now(USATimeZone)# - timedelta(days=1)
     end = now
     if resolution == Resolution.Min:
-        end = datetime(end.year, end.month, end.day, end.hour, end.minute, tzinfo=USATimeZone) - timedelta(minutes=1)
+        end = datetime(end.year, end.month, end.day, end.hour, end.minute, tzinfo=USATimeZone)# - timedelta(minutes=1)
     elif resolution == Resolution.Hour:
-        end = datetime(end.year, end.month, end.day, end.hour, tzinfo=USATimeZone) - timedelta(hours=1)
+        end = datetime(end.year, end.month, end.day, end.hour, tzinfo=USATimeZone)# - timedelta(hours=1)
     elif resolution == Resolution.Day:
-        end = datetime(end.year, end.month, end.day, tzinfo=USATimeZone) - timedelta(days=1)
-    
-    start = end - Resolution.timedelta_object(resolution) * bar_count
-    if resolution == Resolution.Day:
-        start = end - Resolution.timedelta_object(resolution) * bar_count * 2
+        end = datetime(end.year, end.month, end.day, tzinfo=USATimeZone)# - timedelta(days=1)
 
     
+    if resolution == Resolution.Min or resolution == Resolution.Hour:
+        while MarketStatus.CurrentMarketStatus(end) == MarketStatus.Close or MarketStatus.CurrentMarketStatus(end) == MarketStatus.OpenSoon:
+            end -= Resolution.timedelta_object(resolution)
+        start = end
+        have_bar_count = 0
+        while have_bar_count < bar_count:
+            start -= Resolution.timedelta_object(resolution)
+            if MarketStatus.CurrentMarketStatus(start) == MarketStatus.Open or MarketStatus.CurrentMarketStatus(start) == MarketStatus.CloseSoon:
+                have_bar_count += 1
+    elif resolution == Resolution.Day:
+        start = end - Resolution.timedelta_object(resolution) * bar_count * 2
+    else:
+        print('resolution dont exit')
+        exit()
+    print(f'start: {start}')
+    print(f'end: {end}')
     return start, end
 
 

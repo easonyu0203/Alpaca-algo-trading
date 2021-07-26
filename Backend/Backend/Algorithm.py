@@ -98,10 +98,13 @@ class Algorithm:
 def live_trading():
     my_algo = Algorithm(log=True)
     my_algo.Initialize()
-    my_algo._startLive()
+    my_algo._check_for_listening_stream_data()
 
 def main():
-    live_trading()
+    my_algo = Algorithm(log=True)
+    tickers = ['GOOGL', 'TSLA', 'SPY']
+    my_algo.Initialize()
+    my_algo.Stream_data.Start_listen_stream_data(list(my_algo.subscribe_symbol_set))
 
 if __name__ == '__main__':
     main()

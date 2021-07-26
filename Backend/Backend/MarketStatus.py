@@ -4,7 +4,6 @@ from datetime import datetime, timedelta
 
 from .config import USATimeZone
 
-
 class MarketStatus:
     OpenSoon =  0
     Open = 1

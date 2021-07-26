@@ -24,7 +24,7 @@ class StreamData:
         self.is_listening = False
         self.listen_data_thread = None
 
-    def Update(self):
+    def Check_DataIn_Event(self):
         if not self._buffer.empty() and self.is_listening == True:
             data = self._buffer.get()
             self.dataIn_event.Emit(data)
@@ -81,7 +81,7 @@ class StreamData:
             for _ in range(self.subcribeCount):
                 b = json.loads(self.ws.recv())
                 bar_data += b
-            self.Log(bar_data)
+            self.Log(f'[data in]{bar_data}')
             bar_data = self._process_alpaca_steam_data(bar_data)
             self._buffer.put(bar_data)
             
@@ -112,9 +112,7 @@ def main():
     tickers = ['GOOGL', 'TSLA', 'SPY']
     # SubscribeMinBarsData(tickers)
     stream_data = StreamData(log=True)
-    stream_data.ConnectStreaming()
-    stream_data.SubcribeSymbols(tickers)
-    stream_data.ListenData(lambda x: x)
+    stream_data.Start_listen_stream_data(tickers)
 
 if __name__ == '__main__':
     main()

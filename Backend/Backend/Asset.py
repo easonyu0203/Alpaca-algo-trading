@@ -3,7 +3,7 @@ import requests
 import json
 import os
 from dotenv import load_dotenv; load_dotenv()
-from config import USATimeZone
+from .config import USATimeZone
 
 authentication_header = {
     'APCA-API-KEY-ID': os.environ.get('APCA-API-KEY-ID'),
