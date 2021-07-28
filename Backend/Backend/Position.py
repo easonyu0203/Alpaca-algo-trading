@@ -10,6 +10,8 @@ authentication_header = {
     'APCA-API-SECRET-KEY': os.environ.get('APCA-API-SECRET-KEY')
 }
 
+pos_history_path = os.environ.get('Position_History_Path')
+
 base_url = os.environ.get('APCA_API_BASE_URL')
 position_url = f'{base_url}/v2/positions'
         
@@ -30,7 +32,7 @@ class Position:
         self.lastday_price = kwarg['lastday_price']
         self.change_today = kwarg['change_today']
     
-    def get_all_open_position() -> List:
+    def get_all_open_position() -> dict:
         '''
         get  all open position
         return dict of Position object with index by symbol
@@ -63,6 +65,13 @@ class Position:
         '''
         close all position
         '''
+        #log to position history file
+        poss = Position.get_all_open_position()
+        with open(pos_history_path, 'a') as f:
+            for p in poss.values():
+                out = json.dumps(p.info, indent=2)
+                f.write(f'{out}\n')
+            pass
         url = position_url
         r = requests.delete(url, headers=authentication_header, params={'cancel_orders': True})
         r.raise_for_status()
@@ -71,6 +80,12 @@ class Position:
         '''
         close this position
         '''
+        #log to position history file
+        pos = Position.get_open_position(symbol)
+        with open(pos_history_path, 'a') as f:
+            out = json.dumps(pos.info, indent=2)
+            f.write(f'{out}\n')
+        
         url = f'{position_url}/{symbol}'
         params = {
             'percentage': 100,

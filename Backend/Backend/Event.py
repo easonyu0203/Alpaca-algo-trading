@@ -1,11 +1,15 @@
 from enum import Enum, auto
 
-class EventType(Enum):
+class EventType:
     '''
     lower number have higher priority
     '''
     DataIn = 10
     Schedule = 0
+
+class EventListenerType:
+    Ondata = 10
+    Indicator = 0
 
 class Event:
     '''
@@ -37,6 +41,7 @@ class Event:
         Event._regist_emit_event.append(self)
 
     def _actual_emit(self):
+        sorted(self.listener_list, key=lambda x: x._event_listener_type)
         for listener in self.listener_list:
             listener.Callback(self.payload)
 
@@ -61,7 +66,8 @@ class EventListener:
     Subcribe to an event and a call back function to deal with the event
     '''
 
-    def __init__(self, callback) -> None:
+    def __init__(self, callback, event_listener_type) -> None:
+        self._event_listener_type = event_listener_type
         self._subcribed_event = None
         self.Callback = callback
 

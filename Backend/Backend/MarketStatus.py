@@ -10,7 +10,7 @@ class MarketStatus:
     CloseSoon = 2
     Close = 3
     # time interval which consider will open/close soon
-    pre_open_interval = timedelta(minutes=10)
+    pre_open_interval = timedelta(minutes=30, hours=1)
     pre_close_interval = timedelta(minutes=10)
 
     _calendar_df = None

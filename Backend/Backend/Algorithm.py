@@ -1,4 +1,7 @@
-import threading
+from datetime import datetime
+from logging import log
+from dotenv import load_dotenv; load_dotenv()
+import os
 
 from .StreamData import StreamData
 from .Account import Account
@@ -6,23 +9,38 @@ from .Order import Order
 from .Portfolio import Portfolio, PortfolioTarget
 from .Setting import Setting
 from .Position import Position
-from .Event import EventListener
+from .Event import EventListener, EventListenerType
 from .MarketStatus import MarketStatus
+from .config import USATimeZone
+
+log_path = os.environ.get('Log_Path')
 
 class Algorithm:
-    def __init__(self, log=False) -> None:
+    def __init__(self, log=False, debug_log=False) -> None:
         self.subscribe_symbol_set = set()
-        self.Stream_data = StreamData(log=True)
+        self.Stream_data = StreamData(debug_log=True)
         self.Account = Account()
         self.Setting = Setting()
         self.Portfolio = Portfolio(self.Account)
-        self.dataIn_eventListener = EventListener(self.OnData)
+        self.dataIn_eventListener = EventListener(self.OnData, EventListenerType.Ondata)
         self.dataIn_eventListener.Subcribe(self.Stream_data.dataIn_event)
+        self._debug_log = debug_log
         self._log = log
+
+
     
-    def Log(self, _str):
-        if self._log == True:
+    def Debug(self, _str):
+        if self._debug_log == True:
             print(_str)
+    
+    def Log(self, s):
+        if self._log == False: return
+
+        timestamp = datetime.now(USATimeZone).strftime("%Y/%m/%d, %H:%M:%S")
+        with open(log_path, 'a') as f:
+            out = f'[{timestamp}] {s}\n'
+            f.write(out)
+
 
     def Initialize(self):
         #testing
@@ -48,7 +66,7 @@ class Algorithm:
         place a market day order for 'ticker' for 'dollar_amount'
         I assume there will not be any reject or cancle for a order, since this is a market day order, it is unlikely being reject
         '''
-        self.Log(f'buy {symbol} for {dollar_amount}')
+        self.Debug(f'buy {symbol} for {dollar_amount}')
         Order.simple_order(symbol, dollar_amount)
     
     def Liquidate(self, symbol=None):
@@ -56,10 +74,10 @@ class Algorithm:
         liquidate all equity if symbol=None or only that symbol
         '''
         if symbol is None:
-            self.Log('liquidating all position')
+            self.Debug('liquidating all position')
             Position.close_all_position()
         else:
-            self.Log(f'liquidating {symbol}')
+            self.Debug(f'liquidating {symbol}')
             Position.close_position(symbol)
 
     def SetHolding(self, symbol, percentage):
@@ -77,31 +95,32 @@ class Algorithm:
         check market status and decide whether connect to streaming data or not
         '''
         if MarketStatus.CurrentMarketStatus() == MarketStatus.Close and self.Stream_data.is_listening == True:
-            self.Log('Ending connection with Alpaca streaming data')
+            self.Debug('Ending connection with Alpaca streaming data')
             self.Stream_data.End_listen_stream_data()
         elif MarketStatus.CurrentMarketStatus() == MarketStatus.OpenSoon and self.Stream_data.is_listening == False:
-            self.Log('Start conection with Alpaca streaming data')
+            self.Debug('Start conection with Alpaca streaming data')
             self.Stream_data.Start_listen_stream_data(self.subscribe_symbol_set)
         elif MarketStatus.CurrentMarketStatus() == MarketStatus.Open and self.Stream_data.is_listening == False:
-            self.Log('Start conection with Alpaca streaming data')
+            self.Debug('Start conection with Alpaca streaming data')
             self.Stream_data.Start_listen_stream_data(self.subscribe_symbol_set)
         elif MarketStatus.CurrentMarketStatus() == MarketStatus.CloseSoon and self.Stream_data.is_listening == True:
-            self.Log('Ending connection with Alpaca streaming data')
+            self.Debug('Ending connection with Alpaca streaming data')
             self.Stream_data.End_listen_stream_data()
         else:
-            self.Log('stay current connection/unconnection')
+            pass
+            # self.Debug('stay current connection/unconnection')
 
 
 
 
 
 def live_trading():
-    my_algo = Algorithm(log=True)
+    my_algo = Algorithm(Debug=True)
     my_algo.Initialize()
     my_algo._check_for_listening_stream_data()
 
 def main():
-    my_algo = Algorithm(log=True)
+    my_algo = Algorithm(Debug=True)
     tickers = ['GOOGL', 'TSLA', 'SPY']
     my_algo.Initialize()
     my_algo.Stream_data.Start_listen_stream_data(list(my_algo.subscribe_symbol_set))

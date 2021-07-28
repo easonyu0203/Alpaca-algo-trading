@@ -10,32 +10,22 @@ from datetime import datetime, timedelta
 
 from .config import USATimeZone
 from .MarketStatus import MarketStatus
+from .Resolution import Resolution
 
 authentication_header = {
     'APCA-API-KEY-ID': os.environ.get('APCA-API-KEY-ID'),
     'APCA-API-SECRET-KEY': os.environ.get('APCA-API-SECRET-KEY')
 }
 
-class Resolution:
-    Min = '1Min'
-    Hour = '1Hour'
-    Day = '1Day'
-
-    def timedelta_object(resolution):
-        if resolution == Resolution.Min:
-            return timedelta(minutes=1)
-        elif resolution == Resolution.Hour:
-            return timedelta(hours=1)
-        elif resolution == Resolution.Day:
-            return timedelta(days=1) 
 
     
-def getHistoryBarsData(symbol, bar_count, resolution):
+def getHistoryBarsData(symbol, bar_count, resolution, start=None, end=None):
     '''
     get history bar data of symbol for lastest 'bar_count' bars for this resolution
     return dataframe with index by timestape and colume of ['open', 'high', 'low', 'close', 'volume']
     '''
-    start, end = _get_start_end_time(bar_count, resolution)
+    if start is None or end is None:
+        start, end = _get_start_end_time(bar_count, resolution)
     columns = ['timestape', 'open', 'high', 'low', 'close', 'volume']
     base_url = os.environ.get('APCA_API_DATA_URL')
     trade_url =  f'{base_url}/v2/stocks/{symbol}/bars'
@@ -66,18 +56,18 @@ def _get_start_end_time(bar_count, resolution):
     now = datetime.now(USATimeZone)# - timedelta(days=1)
     end = now
     if resolution == Resolution.Min:
-        end = datetime(end.year, end.month, end.day, end.hour, end.minute, tzinfo=USATimeZone)# - timedelta(minutes=1)
+        end = datetime(end.year, end.month, end.day, end.hour, end.minute + 1, tzinfo=USATimeZone)# - timedelta(minutes=20)
     elif resolution == Resolution.Hour:
-        end = datetime(end.year, end.month, end.day, end.hour, tzinfo=USATimeZone)# - timedelta(hours=1)
+        end = datetime(end.year, end.month, end.day, end.hour + 1, tzinfo=USATimeZone)# - timedelta(hours=1)
     elif resolution == Resolution.Day:
-        end = datetime(end.year, end.month, end.day, tzinfo=USATimeZone)# - timedelta(days=1)
+        end = datetime(end.year, end.month, end.day + 1, tzinfo=USATimeZone)# - timedelta(days=1)
 
     
     if resolution == Resolution.Min or resolution == Resolution.Hour:
         while MarketStatus.CurrentMarketStatus(end) == MarketStatus.Close or MarketStatus.CurrentMarketStatus(end) == MarketStatus.OpenSoon:
             end -= Resolution.timedelta_object(resolution)
         start = end
-        have_bar_count = 0
+        have_bar_count = 0 - 1
         while have_bar_count < bar_count:
             start -= Resolution.timedelta_object(resolution)
             if MarketStatus.CurrentMarketStatus(start) == MarketStatus.Open or MarketStatus.CurrentMarketStatus(start) == MarketStatus.CloseSoon:
@@ -87,6 +77,7 @@ def _get_start_end_time(bar_count, resolution):
     else:
         print('resolution dont exit')
         exit()
+    print('[History data]')
     print(f'start: {start}')
     print(f'end: {end}')
     return start, end

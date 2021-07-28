@@ -1,13 +1,18 @@
 from Backend.Indicator import Indicator
 from Backend.RollingWindow import RollingWindow
+from Backend.Algorithm import Algorithm
 
 
 class SMA(Indicator):
 
-    def __init__(self, window_size) -> None:
+    def __init__(self, algo: Algorithm, symbol, window_size) -> None:
+        super().__init__(algo)
+        self.symbol = symbol
         self._window_size = window_size
         self._rollingWindow = RollingWindow(window_size=window_size)
 
+    def Ondata(self, data):
+        self.Update(data[self.symbol].close)
 
     def Update(self, data):
         self._rollingWindow.Update(data)
