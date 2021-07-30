@@ -1,16 +1,17 @@
+from logging import log
+from typing import Tuple
 from dotenv import load_dotenv; load_dotenv()
 import os
 from time import sleep
 import subprocess
 
 from Backend.Event import Event
-from Backend.MarketStatus import MarketStatus
 from MyAlgo import MyAlogo
 
 position_history_path = os.environ.get('Position_History_Path')
 log_path = os.environ.get('Log_Path')
 
-def main():
+def LiveTrading():
     my_algo = MyAlogo(log=True, debug_log=True)
     my_algo.Initialize()
 
@@ -28,6 +29,10 @@ def main():
 
         sleep(1.0)
 
+def Backtesting():
+    my_algo = MyAlogo(log=True, debug_log=True)
+
+
 def clear_log_files():
     subprocess.run(['rm',position_history_path])
     subprocess.run(['rm', log_path])
@@ -35,4 +40,4 @@ def clear_log_files():
 
 if __name__ == '__main__':
     clear_log_files()
-    main()
+    LiveTrading()

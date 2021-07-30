@@ -12,6 +12,7 @@ class SMA(Indicator):
         self._rollingWindow = RollingWindow(window_size=window_size)
 
     def Ondata(self, data):
+        assert self.symbol in data.keys()
         self.Update(data[self.symbol].close)
 
     def Update(self, data):

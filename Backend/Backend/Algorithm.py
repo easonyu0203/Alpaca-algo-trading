@@ -1,4 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
+import pandas as pd
+import threading
 from logging import log
 from dotenv import load_dotenv; load_dotenv()
 import os
@@ -9,8 +11,11 @@ from .Order import Order
 from .Portfolio import Portfolio, PortfolioTarget
 from .Setting import Setting
 from .Position import Position
+from .Time import Time
 from .Event import EventListener, EventListenerType
 from .MarketStatus import MarketStatus
+from .Resolution import Resolution
+from .HistoryData import getHistoryBarsData
 from .config import USATimeZone
 
 log_path = os.environ.get('Log_Path')
@@ -18,14 +23,17 @@ log_path = os.environ.get('Log_Path')
 class Algorithm:
     def __init__(self, log=False, debug_log=False) -> None:
         self.subscribe_symbol_set = set()
-        self.Stream_data = StreamData(debug_log=True)
+        self.Stream_data = StreamData(debug_log=False)
         self.Account = Account()
         self.Setting = Setting()
         self.Portfolio = Portfolio(self.Account)
-        self.dataIn_eventListener = EventListener(self.OnData, EventListenerType.Ondata)
-        self.dataIn_eventListener.Subcribe(self.Stream_data.dataIn_event)
+        self.Time = Time(self)
+        self.MarketStatus = MarketStatus(self)
+        self._dataIn_eventListener = EventListener(self.OnData, EventListenerType.Ondata)
+        self._dataIn_eventListener.Subcribe(self.Stream_data.dataIn_event)
         self._debug_log = debug_log
         self._log = log
+        self._backtesting = False
 
 
     
@@ -36,24 +44,17 @@ class Algorithm:
     def Log(self, s):
         if self._log == False: return
 
-        timestamp = datetime.now(USATimeZone).strftime("%Y/%m/%d, %H:%M:%S")
+        timestamp = self.Time.now.strftime("%Y/%m/%d, %H:%M:%S")
         with open(log_path, 'a') as f:
             out = f'[{timestamp}] {s}\n'
             f.write(out)
 
 
     def Initialize(self):
-        #testing
-        self.AddEquity('SPY')
-        self.AddEquity('TSLA')
+        pass
 
     def OnData(self, data):
-        print('Ondata..')
-        if not self.Portfolio.have_invested:
-            print('no portfolio')
-            self.SetHolding('TSLA', 1)
-        else:
-            self.Liquidate('TSLA')
+        pass
 
     def AddEquity(self, symbol):
         '''
@@ -90,25 +91,90 @@ class Algorithm:
         dollar_amount = self.Account.buying_power * self.Setting.with_cash_buffer * percentage
         self.SimpleOrder(symbol, dollar_amount)
 
+    def History(self, bar_count, resolution, start=None, end=None) -> pd.DataFrame:
+        '''
+        get history bar data of all symbol for lastest 'bar_count' bars for this resolution
+        return dataframe
+        two level index ['symbol', 'timestamp']
+        colume ['open', 'high', 'low', 'close', 'volume']
+
+        '''
+        symbols = self.subscribe_symbol_set
+        df_list = []
+        thread_list = []
+
+        def runner(df_list, symbol, bar_count, resolution, start, end, algo):
+            df = getHistoryBarsData(symbol, bar_count, resolution, start=start, end=end, algo=algo)
+            df['symbol'] = symbol
+            df_list.append(df)
+
+        for symbol in symbols:
+            thread_list.append(threading.Thread(target=runner, args=(df_list, symbol, bar_count, resolution, start, end, self)))
+        for t in thread_list:
+            t.start()
+        for t in thread_list:
+            t.join()
+        out_df = pd.concat(df_list).reset_index().set_index(['symbol', 'timestamp'])
+        return out_df
+
+
     def _check_for_listening_stream_data(self):
         '''
         check market status and decide whether connect to streaming data or not
         '''
-        if MarketStatus.CurrentMarketStatus() == MarketStatus.Close and self.Stream_data.is_listening == True:
+        if self.MarketStatus.CurrentMarketStatus() == self.MarketStatus.Close and self.Stream_data.is_listening == True:
             self.Debug('Ending connection with Alpaca streaming data')
             self.Stream_data.End_listen_stream_data()
-        elif MarketStatus.CurrentMarketStatus() == MarketStatus.OpenSoon and self.Stream_data.is_listening == False:
+        elif self.MarketStatus.CurrentMarketStatus() == self.MarketStatus.OpenSoon and self.Stream_data.is_listening == False:
             self.Debug('Start conection with Alpaca streaming data')
             self.Stream_data.Start_listen_stream_data(self.subscribe_symbol_set)
-        elif MarketStatus.CurrentMarketStatus() == MarketStatus.Open and self.Stream_data.is_listening == False:
+        elif self.MarketStatus.CurrentMarketStatus() == self.MarketStatus.Open and self.Stream_data.is_listening == False:
             self.Debug('Start conection with Alpaca streaming data')
             self.Stream_data.Start_listen_stream_data(self.subscribe_symbol_set)
-        elif MarketStatus.CurrentMarketStatus() == MarketStatus.CloseSoon and self.Stream_data.is_listening == True:
+        elif self.MarketStatus.CurrentMarketStatus() == self.MarketStatus.CloseSoon and self.Stream_data.is_listening == True:
             self.Debug('Ending connection with Alpaca streaming data')
             self.Stream_data.End_listen_stream_data()
         else:
             pass
             # self.Debug('stay current connection/unconnection')
+    
+
+    '''
+    Backtesting method
+    '''
+    def StartDate(self, year: int, month: int, day: int):
+        self._start_date = datetime(year, month, day, tzinfo=USATimeZone)
+        self.Time.backtest_now = self._start_date
+    
+    def EndDate(self, year: int, month: int, day: int):
+        self._end_date = datetime(year, month, day, tzinfo=USATimeZone)
+    
+    def _is_end_date(self):
+        return self.Time.now >= self._end_date
+    
+    def SetCash(self, cash):
+        self._cash = cash
+    
+    def _set_backtest(self):
+        self._backtesting = True
+        
+    
+    def _get_backtest_history_data_in(self):
+        '''
+        return dataframe of history data that will stream in to OnData method in backtesting
+        '''
+        #get start, end date
+        start = self._start_date
+        end = self._end_date
+        if end is None: end = date.today()
+        start, end = datetime(start.year, start.month, start.day, tzinfo=USATimeZone), datetime(end.year, end.month, end.day, tzinfo=USATimeZone)
+        history = self.History(0, Resolution.Min, start=start, end=end)
+        return history
+    
+    @property
+    def _is_backtesting(self):
+        return self._backtesting
+        
 
 
 

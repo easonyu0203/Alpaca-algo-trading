@@ -37,7 +37,7 @@ class Account:
         self._daytrade_count = int(info_dict['daytrade_count'])
 
         assert self._short_market_value == 0
-        assert self._pattern_day_trader == False
+        # assert self._pattern_day_trader == False
     
     def _getAccountInfo(self) -> dict:
         '''

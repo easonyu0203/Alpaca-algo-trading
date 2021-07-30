@@ -1,4 +1,5 @@
 from collections import namedtuple
+from logging import NOTSET
 from .Account import Account
 from .Position import Position
 
@@ -12,9 +13,15 @@ class Portfolio:
     def open_positions(self):
         return Position.get_all_open_position()
     
-    @property
-    def have_invested(self):
-        return not (self.open_positions == {})
+    def have_invested(self, symbol=None):
+        '''
+        if symbol is None, check whether have invested any money,
+        else check have invested in symbol
+        '''
+        if symbol is None:
+            return not (self.open_positions == {})
+        else:
+            return (Position.get_open_position(symbol) != None)
 
 
 if __name__ == '__main__':

@@ -5,7 +5,7 @@ class Resolution:
     Hour = '1Hour'
     Day = '1Day'
 
-    def timedelta_object(resolution):
+    def timedelta_object(resolution) -> timedelta:
         if resolution == Resolution.Min:
             return timedelta(minutes=1)
         elif resolution == Resolution.Hour:

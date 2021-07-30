@@ -23,7 +23,7 @@ class StreamData:
     def __init__(self, debug_log=False) -> None:
         self._source = 'sip'
         self._debug_log = debug_log
-        self.subcribeCount = 0
+        self.subcribe_symbols = []
         self._buffer = SimpleQueue()
         self.dataIn_event = Event(EventType.DataIn)
         self.is_listening = False
@@ -70,7 +70,7 @@ class StreamData:
         self.Debug(auth_response)
     
     def SubcribeSymbols(self, tickers:List):
-        self.subcribeCount = len(tickers)
+        self.subcribe_symbols = tickers
         tickers = str(tickers).replace('\'', '\"')
         subscribe_str = f'{{"action":"subscribe","bars":{tickers}}}'
         self.ws.send(subscribe_str)
@@ -81,14 +81,18 @@ class StreamData:
         while(self.is_listening):
             #since alpaca stream one symbol at a time, I concate all data in a time slice to one bar_data
             bar_data = []
-            for _ in range(self.subcribeCount):
+            get_set = set()
+            while len(get_set) < len(self.subcribe_symbols):
                 b = json.loads(self.ws.recv())
                 bar_data += b
-            self.Debug(f'[data in]{bar_data}')
+                get_set.add(b[0]['S'])
+            # self.Debug(f'[data in]{bar_data}')
+            self.Debug('[data in]')
             bar_data = self._process_alpaca_steam_data(bar_data)
-            current_timestamp = list(bar_data.values())[0]['timestamp']
+            current_timestamp = list(bar_data.values())[0].timestamp
             if self.last_data_timestamp is not None and self.last_data_timestamp == current_timestamp:
-                self.Debug('data repeat (alpaca stream problem)')
+                # self.Debug('data repeat (alpaca stream problem)')
+                pass
             else:
                 self._buffer.put(bar_data)
                 self.last_data_timestamp == current_timestamp

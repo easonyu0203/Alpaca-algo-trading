@@ -1,105 +1,156 @@
+import pandas as pd
+
 from Backend.Algorithm import Algorithm
-from Backend.HistoryData import getHistoryBarsData
-from Backend.MarketStatus import MarketStatus
-from Indicator.SMA import SMA
 from Backend.Resolution import Resolution
 from Backend.RollingWindow import RollingWindow
+from Indicator.SMA import SMA
 
 
 class MyAlogo(Algorithm):
     def Initialize(self):
         self.Log('myalgo init...')
-        #testing
-        self.AddEquity('TSLA')
-        self.sma03 = SMA(self, 'TSLA', 3)
-        self.sma10 = SMA(self, 'TSLA', 10)
-        self.sma50 = SMA(self, 'TSLA', 50)
-        self.sma10_rolling = RollingWindow(13)
-        self.sma03_rolling = RollingWindow(2)
+        #backtest
+        self.StartDate(2021, 7, 29)
+        self.EndDate(2021, 7, 30)
+        self.SetCash(1_000_000)
+
+        self.sma03_dic = {}
+        self.sma10_dic = {}
+        self.sma03_rolling_dic = {}
+        self.sma10_rolling_dic = {}
+        self.low_rolling_dic ={}
+        self.high_rolling_dic ={}
+        self.symbols = [
+            'SPY',
+            'TSLA',
+            'AAPL',
+            'GOOGL',
+            'AMD',
+            'GE',
+            'MSFT',
+            'CCL',
+            'FB',
+            'NVDA',
+            'BA',
+            'BAC',
+            'INTC',
+        ]
+        self.current_hold_symbol = None
+        for symbol in self.symbols:
+            self.AddEquity(symbol)
+        df = self.History(30, Resolution.Min)
+        for symbol in self.symbols:
+            self.EachInit(symbol, df.loc[symbol])
         
-        #warm up sma
-        self.Log('Warm Up')
-        for bar in getHistoryBarsData('TSLA', 50, Resolution.Min).itertuples():
-            self.sma03.Update(bar.close)
-            self.sma10.Update(bar.close)
-            self.sma50.Update(bar.close)
-            if self.sma03.is_ready:
-                self.sma03_rolling.Update(self.sma03.value)
-            if self.sma10.is_ready:
-                self.sma10_rolling.Update(self.sma10.is_ready)
+        #liquidate all first
+        self.Liquidate()
 
     def OnData(self, data):
         self.Log('=========Ondata========')
+        for symbol in self.symbols:
+            self.EachUpdateIndicator(symbol, data)
+        
+        if self.Portfolio.have_invested() == False:
+            for symbol in self.symbols:
+                buy_this = self.EachCheckBuy(symbol, data) 
+                if buy_this:
+                    self.current_hold_symbol = symbol
+                    break
+        else:
+            self.EachCheckSell(self.current_hold_symbol, data)
+        
+
+        self.Log('=========================\n')
+
+    def EachInit(self, symbol, df):
+        self.Log(f'init {symbol}')
+        self.sma03_dic[symbol] = SMA(self, symbol, 3)
+        self.sma10_dic[symbol] = SMA(self, symbol, 10)
+        self.sma10_rolling_dic[symbol] = RollingWindow(13)
+        self.sma03_rolling_dic[symbol] = RollingWindow(2)
+        self.low_rolling_dic[symbol] = RollingWindow(2)
+        self.high_rolling_dic[symbol] = RollingWindow(2)
+
+        for bar in df.itertuples():
+            self.sma03_dic[symbol].Update(bar.close)
+            self.sma10_dic[symbol].Update(bar.close)
+            self.low_rolling_dic[symbol].Update(bar.low)
+            self.high_rolling_dic[symbol].Update(bar.high)
+            if self.sma03_dic[symbol].is_ready:
+                self.sma03_rolling_dic[symbol].Update(self.sma03_dic[symbol].value)
+            if self.sma10_dic[symbol].is_ready:
+                self.sma10_rolling_dic[symbol].Update(self.sma10_dic[symbol].value)
+    
+    def EachUpdateIndicator(self, symbol, data):
         #manual update indicator
-        if self.sma10.is_ready:
-            self.sma10_rolling.Update(self.sma10.value)
-        if self.sma03.is_ready:
-            self.sma03_rolling.Update(self.sma03.value)
-        if self.sma50.is_ready == False:
+        if self.sma10_dic[symbol].is_ready:
+            self.sma10_rolling_dic[symbol].Update(self.sma10_dic[symbol].value)
+        if self.sma03_dic[symbol].is_ready:
+            self.sma03_rolling_dic[symbol].Update(self.sma03_dic[symbol].value)
+        self.low_rolling_dic[symbol].Update(data[symbol].low)
+        self.high_rolling_dic[symbol].Update(data[symbol].high)
+        if self.sma10_rolling_dic[symbol].is_ready == False:
             self.Log('indicator not ready yet..')
             return
-
-        self.Log(f'sma 03: {self.sma03.value}')
-        self.Log(f'sma 10: {self.sma10.value}')
-        self.Log(f'sma 50: {self.sma50.value}')
-        current_price = data['TSLA'].close
-        self.Log(f'price: {current_price}')
-        if self.have_down_trend: self.Log('have down trend')
-        else: self.Log('dont have down trend')
-        if self.sma03.value > self.sma50.value: self.Log('price above sma 50')
-        if self.cross_down: self.Log('cross down')
-        elif self.cross_up: self.Log('cross up')
-        else: self.Log('no corss')
         
+        self.Debug(f'{symbol} sma03: {self.sma03_dic[symbol].value:.2f} sma10: {self.sma10_dic[symbol].value:.2f} low: {data[symbol].low:.2f} high: {data[symbol].high:.2f}')
+    
+
+    def EachCheckBuy(self, symbol, data) -> bool:
+        '''
+        return True if buy
+        '''
         #if Market not open yet, don't place any order
-        if MarketStatus.CurrentMarketStatus() != MarketStatus.Open:
-            self.Log('===Market not open, dont place order===')
+        if self.MarketStatus.CurrentMarketStatus() != self.MarketStatus.Open:
+            self.Debug('===Market not open, dont place order===')
             return
 
         #find buy point when not invested
-        if self.Portfolio.have_invested == False:
-                if self.have_down_trend == True:
-                    if self.cross_up == True:
-                        self.Log('===BUY===')
-                        self.SetHolding('TSLA', 1)
+        if self.have_down_trend(symbol) == True:
+            if self.cross_up(symbol) == True:
+                self.Debug(f'===BUY {symbol}===')
+                self.SetHolding(symbol, 1)
+                return True
         else:
-            if self.cross_down == True:
-                self.Log('===SELL===')
-                self.Liquidate('TSLA')
-        self.Log('=========================\n')
-
+            return False
+    
+    def EachCheckSell(self, symbol, data):
+        if self.cross_down(symbol):
+            self.Debug(f'===SELL {symbol}===')
+            self.Liquidate(symbol)
 
     
-    @property
-    def have_down_trend(self):
-        assert self.sma10_rolling.is_ready == True
+    def have_down_trend(self, symbol):
+        assert self.sma10_rolling_dic[symbol].is_ready == True
         #if 80% of previous sma 10 are going down, then have down trend
         #the two lastest point dont use 
-        indi_list = list(self.sma10_rolling)[2:]
+        indi_list = list(self.sma10_rolling_dic[symbol])[2:]
         cnt = 0
         for pre, now in zip(indi_list[1:], indi_list[:-1]):
             if pre >= now: 
                 cnt += 1
-        self.Log(f'down pc: {cnt}/{len(indi_list) - 1}')
-        if cnt / (len(indi_list) - 1)>= 0.66:
+        self.Debug(f'{symbol} down pc: {cnt}/{len(indi_list) - 1}')
+        if cnt / (len(indi_list) - 1)>= 0.8:
             return True
         else:
             return False
     
-    @property
-    def cross_down(self):
-        assert self.sma03_rolling.is_ready == True
-        assert self.sma10_rolling.is_ready == True
-        if self.sma03_rolling[1] > self.sma10_rolling[1] and self.sma03_rolling[0] < self.sma10_rolling[0]:
+    def cross_down(self, symbol):
+        assert self.sma03_rolling_dic[symbol].is_ready == True
+        assert self.low_rolling_dic[symbol].is_ready == True
+        assert self.high_rolling_dic[symbol].is_ready == True
+        assert self.sma10_rolling_dic[symbol].is_ready == True
+        if self.low_rolling_dic[symbol][1] > self.sma10_rolling_dic[symbol][1] and self.low_rolling_dic[symbol][0] < self.sma10_rolling_dic[symbol][0]:
             return True
         else:
             return False
     
-    @property
-    def cross_up(self):
-        assert self.sma03_rolling.is_ready == True
-        assert self.sma10_rolling.is_ready == True
-        if self.sma03_rolling[1] < self.sma10_rolling[1] and self.sma03_rolling[0] > self.sma10_rolling[0]:
+    def cross_up(self, symbol):
+        assert self.sma03_rolling_dic[symbol].is_ready == True
+        assert self.low_rolling_dic[symbol].is_ready == True
+        assert self.high_rolling_dic[symbol].is_ready == True
+        assert self.sma10_rolling_dic[symbol].is_ready == True
+        if self.high_rolling_dic[symbol][1] < self.sma10_rolling_dic[symbol][1] and self.high_rolling_dic[symbol][0] > self.sma10_rolling_dic[symbol][0]:
             return True
         else:
             return False
